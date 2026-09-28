@@ -58,7 +58,7 @@ The backend starts scanning on its own as soon as it boots (a background thread,
 4. Deploy. Vercel gives you a `https://<project>.vercel.app` URL.
 5. Go back to Railway and set `FRONTEND_ORIGIN` (step 1.4) to this exact URL if you hadn't yet, then redeploy the backend so CORS allows it.
 
-**Gotcha if the GitHub repo and Vercel account are under different identities** (e.g. a personal GitHub org vs. a different Vercel account/login): the dashboard import flow in step 1 handles the cross-account GitHub authorization via a popup automatically. If you instead create the Vercel project first and try to connect the repo after the fact, you may need to explicitly authorize Vercel's GitHub App for that account/repo under **Project -> Settings -> Git -> Connect Repository** before it'll link — a CLI-only `vercel git connect` fails silently in this case with "Make sure there aren't any typos and that you have access to the repository."
+**Gotcha if the GitHub repo and Vercel account are under different identities** (e.g. a personal GitHub org vs. a different Vercel account/login): the dashboard import flow in step 1 handles the cross-account GitHub authorization via a popup automatically. If you instead create the Vercel project first and try to connect the repo after the fact via CLI, `vercel git connect` fails with "Make sure there aren't any typos and that you have access to the repository" until you authorize Vercel's GitHub App for that account/repo once under **Project -> Settings -> Git -> Connect Repository** in the dashboard — after that one-time authorization, `vercel git connect` (or the dashboard button) links it immediately.
 
 ## 3. Confirm the automation loop
 
