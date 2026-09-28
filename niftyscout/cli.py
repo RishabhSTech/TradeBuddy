@@ -61,6 +61,9 @@ def cmd_replay(args):
         horizon_bars=args.horizon,
         enabled=det_cfg.get("enabled"),
         params=det_cfg.get("params", {}),
+        indicator_params=config.get("indicators", {}),
+        level_params=config.get("levels", {}),
+        volume_profile_params=config.get("volume_profile", {}),
     )
     print(json.dumps(summarize(results), indent=2))
     if args.verbose:
@@ -70,6 +73,8 @@ def cmd_replay(args):
                 f"({r.signal.direction}) -> {r.forward_return_pct}% "
                 f"{'HIT' if r.hit else 'miss'}"
             )
+            if r.signal.analyst_note:
+                print(f"    {r.signal.analyst_note}")
 
 
 def main():

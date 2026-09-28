@@ -62,3 +62,30 @@ alerts:
   seen_store: "data_cache/seen_signals.json"
   # Telegram: set these as environment variables instead of here.
   #   NIFTYSCOUT_TG_TOKEN, NIFTYSCOUT_TG_CHAT_ID
+
+# indicators: shared technical-indicator pass every detector's confidence
+# and every signal's TradePlan is computed from (see niftyscout/indicators.py)
+indicators:
+  rsi_period: 14
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  ema_fast: 20
+  ema_slow: 50
+  ema_trend: 200
+  atr_period: 14
+  rel_volume_window: 20
+
+# volume_profile: where volume actually traded over the last `lookback_bars`,
+# used for the stretch target (target2) and the chart's POC/VAH/VAL lines
+volume_profile:
+  bins: 24
+  value_area_pct: 0.70
+  lookback_bars: 120
+
+# levels: how each signal's entry/stop/target plan is sized
+#   atr_stop_mult: stop = broken level +/- this many ATRs
+#   measured_move_mult: target1 = breakout price +/- (pattern height * this)
+levels:
+  atr_stop_mult: 0.5
+  measured_move_mult: 1.0

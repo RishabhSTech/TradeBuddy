@@ -37,6 +37,9 @@ def scan_once(
     enabled = det_cfg.get("enabled")
     params = det_cfg.get("params", {})
     alert_cfg = config.get("alerts", {})
+    indicator_params = config.get("indicators", {})
+    level_params = config.get("levels", {})
+    volume_profile_params = config.get("volume_profile", {})
 
     for index_key in indices:
         for interval in intervals:
@@ -49,7 +52,16 @@ def scan_once(
             if df.empty or len(df) < 5:
                 continue
 
-            signals = detect_all(df, index_key, interval, enabled=enabled, params=params)
+            signals = detect_all(
+                df,
+                index_key,
+                interval,
+                enabled=enabled,
+                params=params,
+                indicator_params=indicator_params,
+                level_params=level_params,
+                volume_profile_params=dict(volume_profile_params),
+            )
             if not signals:
                 continue
 

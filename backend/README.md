@@ -35,7 +35,7 @@ Swagger UI.
 | GET | `/api/status` | market-open state, last/next scan, telegram status |
 | GET | `/api/signals` | recent signals (`?limit=&index=&pattern=`), charts inlined |
 | GET | `/api/config` | effective config + what indices/detectors are available |
-| PUT | `/api/config` | patch indices/intervals/detectors/poll_seconds/only_market_hours |
+| PUT | `/api/config` | patch indices/intervals/detectors/poll_seconds/only_market_hours/indicator_params/level_params/volume_profile_params |
 | POST | `/api/scan` | trigger an immediate scan pass |
 | GET | `/api/replay` | run the CLI's historical sanity-check (`?index=&interval=&lookback=&horizon=`) |
 | GET | `/api/stream` | SSE stream, pushes each fresh signal as it's found |
@@ -44,6 +44,15 @@ Swagger UI.
 
 Two tables (`app/db.py`):
 - `signals` — every fresh signal, one row each, chart PNG as base64 text.
+  Also carries `pattern_height`, `confidence_breakdown`, `indicators`
+  (RSI/MACD/EMA stack/ATR/VWAP/OBV/relative volume), `volume_levels`
+  (POC/VAH/VAL), `plan` (entry/stop/target/R:R), and `analyst_note` — all
+  nullable, computed by `niftyscout`'s `indicators.py`/`levels.py`/
+  `analyst.py` and populated for every signal found from here on. These
+  columns were added after the initial release; `init_db()` migrates
+  existing tables (including the live Postgres DB) on every startup via a
+  small idempotent `ALTER TABLE ... ADD COLUMN IF MISSING` helper, since
+  this repo has no Alembic/migration framework.
 - `config_blob` — a single JSON row holding whatever the dashboard's config
   editor has saved, merged over `../config.yaml`'s defaults at read time so
   a redeploy never silently reverts a user's choices.

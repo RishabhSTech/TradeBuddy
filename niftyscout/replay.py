@@ -29,8 +29,20 @@ def replay(
     horizon_bars: int = 10,
     enabled: list[str] | None = None,
     params: dict[str, dict] | None = None,
+    indicator_params: dict | None = None,
+    level_params: dict | None = None,
+    volume_profile_params: dict | None = None,
 ) -> list[ReplayResult]:
-    signals = detect_all(df, index_key, interval, enabled=enabled, params=params)
+    signals = detect_all(
+        df,
+        index_key,
+        interval,
+        enabled=enabled,
+        params=params,
+        indicator_params=indicator_params,
+        level_params=level_params,
+        volume_profile_params=volume_profile_params,
+    )
     results = []
     closes = df["Close"]
     idx = df.index

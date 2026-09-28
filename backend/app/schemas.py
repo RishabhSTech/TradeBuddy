@@ -6,6 +6,35 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
+class IndicatorOut(BaseModel):
+    rsi14: Optional[float] = None
+    macd: Optional[float] = None
+    macd_signal: Optional[float] = None
+    macd_hist: Optional[float] = None
+    ema_fast: Optional[float] = None
+    ema_slow: Optional[float] = None
+    ema_trend: Optional[float] = None
+    atr14: Optional[float] = None
+    vwap: Optional[float] = None
+    rel_volume: Optional[float] = None
+    obv: Optional[float] = None
+    trend_direction: Optional[str] = None
+    trend_strength: Optional[float] = None
+
+
+class TradePlanOut(BaseModel):
+    entry: float
+    stop: float
+    target1: float
+    target2: Optional[float] = None
+    risk_per_unit: float
+    reward_to_target1: float
+    r_multiple_1: float
+    r_multiple_2: Optional[float] = None
+    method: str
+    basis: List[str]
+
+
 class SignalOut(BaseModel):
     id: int
     timestamp: dt.datetime
@@ -18,6 +47,12 @@ class SignalOut(BaseModel):
     confidence: float
     note: str
     chart_data_uri: Optional[str] = None
+    pattern_height: Optional[float] = None
+    confidence_breakdown: Optional[Dict[str, float]] = None
+    indicators: Optional[IndicatorOut] = None
+    volume_levels: Optional[Dict[str, float]] = None
+    plan: Optional[TradePlanOut] = None
+    analyst_note: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -54,6 +89,9 @@ class ConfigOut(BaseModel):
     only_market_hours: bool
     detectors_enabled: List[str]
     detectors_params: Dict[str, dict]
+    indicator_params: Dict[str, float]
+    level_params: Dict[str, float]
+    volume_profile_params: Dict[str, float]
     available_indices: List[str]
     available_detectors: List[str]
 
@@ -65,6 +103,9 @@ class ConfigUpdate(BaseModel):
     only_market_hours: Optional[bool] = None
     detectors_enabled: Optional[List[str]] = None
     detectors_params: Optional[Dict[str, dict]] = None
+    indicator_params: Optional[Dict[str, float]] = None
+    level_params: Optional[Dict[str, float]] = None
+    volume_profile_params: Optional[Dict[str, float]] = None
 
 
 class ScanResult(BaseModel):

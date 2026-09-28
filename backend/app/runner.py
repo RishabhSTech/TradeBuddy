@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import dataclasses
 import json
 import os
 import threading
@@ -93,11 +94,18 @@ def _get_seen() -> SeenStore:
     return _seen
 
 
+def _asdict_or_none(obj) -> dict | None:
+    return dataclasses.asdict(obj) if obj is not None else None
+
+
 def _persist_signal(sig: Signal, chart_path: str | None) -> db.SignalRow:
     chart_b64 = None
     if chart_path and os.path.exists(chart_path):
         with open(chart_path, "rb") as f:
             chart_b64 = base64.b64encode(f.read()).decode("ascii")
+
+    indicators_dict = _asdict_or_none(sig.indicators)
+    plan_dict = _asdict_or_none(sig.plan)
 
     row = db.SignalRow(
         timestamp=sig.timestamp.to_pydatetime() if hasattr(sig.timestamp, "to_pydatetime") else sig.timestamp,
@@ -110,6 +118,12 @@ def _persist_signal(sig: Signal, chart_path: str | None) -> db.SignalRow:
         confidence=sig.confidence,
         note=sig.note,
         chart_base64=chart_b64,
+        pattern_height=sig.pattern_height,
+        confidence_breakdown=sig.confidence_breakdown,
+        indicators=indicators_dict,
+        volume_levels=sig.volume_levels,
+        plan=plan_dict,
+        analyst_note=sig.analyst_note,
     )
     saved = db.insert_signal(row)
 
@@ -128,6 +142,12 @@ def _persist_signal(sig: Signal, chart_path: str | None) -> db.SignalRow:
                 "confidence": saved.confidence,
                 "note": saved.note,
                 "chart_data_uri": f"data:image/png;base64,{chart_b64}" if chart_b64 else None,
+                "pattern_height": saved.pattern_height,
+                "confidence_breakdown": saved.confidence_breakdown,
+                "indicators": saved.indicators,
+                "volume_levels": saved.volume_levels,
+                "plan": saved.plan,
+                "analyst_note": saved.analyst_note,
             },
         }
     )
@@ -163,6 +183,9 @@ def run_replay(index_key: str, interval: str, lookback: str, horizon: int) -> di
         horizon_bars=horizon,
         enabled=det_cfg.get("enabled"),
         params=det_cfg.get("params", {}),
+        indicator_params=config.get("indicators", {}),
+        level_params=config.get("levels", {}),
+        volume_profile_params=config.get("volume_profile", {}),
     )
     return summarize(results)
 

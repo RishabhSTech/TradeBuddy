@@ -53,6 +53,19 @@ def get_effective_config() -> dict:
                 params.setdefault(name, {}).update(values)
         config["detectors"] = detectors
 
+        # indicators/levels/volume_profile are flat {param: value} dicts
+        # (unlike detectors_params, which is per-detector-name), so a plain
+        # key-by-key update is enough.
+        for override_key, config_key in (
+            ("indicator_params", "indicators"),
+            ("level_params", "levels"),
+            ("volume_profile_params", "volume_profile"),
+        ):
+            if override_key in override:
+                section = copy.deepcopy(config.get(config_key, {}))
+                section.update(override[override_key])
+                config[config_key] = section
+
         return config
 
 
@@ -67,5 +80,10 @@ def save_overrides(patch: dict) -> dict:
             for name, values in patch["detectors_params"].items():
                 merged_params.setdefault(name, {}).update(values)
             current["detectors_params"] = merged_params
+        for flat_key in ("indicator_params", "level_params", "volume_profile_params"):
+            if flat_key in patch:
+                merged = dict(current.get(flat_key, {}))
+                merged.update(patch[flat_key])
+                current[flat_key] = merged
         db.save_config_override(current)
     return get_effective_config()

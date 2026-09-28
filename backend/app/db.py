@@ -22,7 +22,7 @@ import datetime as dt
 import os
 from typing import Optional
 
-from sqlalchemy import JSON, DateTime, Float, Integer, String, Text, create_engine, select
+from sqlalchemy import JSON, DateTime, Float, Integer, String, Text, create_engine, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 DEFAULT_SQLITE_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "niftyscout.db")
@@ -69,6 +69,16 @@ class SignalRow(Base):
         DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
     )
 
+    # Added after the initial release -- see _add_column_if_missing() below,
+    # which migrates existing tables (including the live Postgres DB) on
+    # every startup since this repo has no Alembic/migration framework.
+    pattern_height: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    confidence_breakdown: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    indicators: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    volume_levels: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    plan: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    analyst_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
 
 class ConfigBlob(Base):
     __tablename__ = "config_blob"
@@ -81,8 +91,31 @@ class ConfigBlob(Base):
     )
 
 
+# (column_name, DDL type) -- additive columns introduced after the initial
+# release. `Base.metadata.create_all()` only creates missing *tables*, never
+# alters existing ones, so these are migrated by hand on every startup.
+_SIGNALS_TABLE_MIGRATIONS = [
+    ("pattern_height", "DOUBLE PRECISION"),
+    ("confidence_breakdown", "JSON"),
+    ("indicators", "JSON"),
+    ("volume_levels", "JSON"),
+    ("plan", "JSON"),
+    ("analyst_note", "TEXT"),
+]
+
+
+def _add_column_if_missing(table: str, column: str, ddl_type: str) -> None:
+    existing = {c["name"] for c in inspect(engine).get_columns(table)}
+    if column in existing:
+        return
+    with engine.begin() as conn:
+        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
+
+
 def init_db() -> None:
     Base.metadata.create_all(engine)
+    for column, ddl_type in _SIGNALS_TABLE_MIGRATIONS:
+        _add_column_if_missing("signals", column, ddl_type)
 
 
 def get_session() -> Session:

@@ -81,6 +81,12 @@ def _row_to_signal_out(row: db.SignalRow) -> SignalOut:
         confidence=row.confidence,
         note=row.note,
         chart_data_uri=chart_uri,
+        pattern_height=row.pattern_height,
+        confidence_breakdown=row.confidence_breakdown,
+        indicators=row.indicators,
+        volume_levels=row.volume_levels,
+        plan=row.plan,
+        analyst_note=row.analyst_note,
     )
 
 
@@ -127,6 +133,9 @@ def get_config() -> ConfigOut:
         only_market_hours=config.get("only_market_hours", True),
         detectors_enabled=det.get("enabled", []),
         detectors_params=det.get("params", {}),
+        indicator_params=config.get("indicators", {}),
+        level_params=config.get("levels", {}),
+        volume_profile_params=config.get("volume_profile", {}),
         available_indices=DEFAULT_KEYS,
         available_detectors=list(DETECTORS.keys()),
     )

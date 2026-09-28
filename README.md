@@ -18,6 +18,33 @@ attached — so you can decide for yourself.
 All of it runs on **Nifty (`^NSEI`), Bank Nifty (`^NSEBANK`) and Sensex
 (`^BSESN`)** by default (see `niftyscout/symbols.py`).
 
+## Beyond "a pattern fired": indicators, volume, and a trade plan
+
+Every signal also carries:
+- **Indicators** (`niftyscout/indicators.py`): RSI(14), MACD, an EMA 20/50/200
+  stack for trend context, ATR(14) for volatility, session VWAP (intraday),
+  OBV, and relative volume (current bar vs. its own rolling average — never
+  an absolute threshold, since index volume is a proxy figure, not a traded
+  contract's volume).
+- **A volume profile** (`niftyscout/volume_profile.py`) over the recent
+  window: Point of Control and Value Area High/Low, used as extra
+  support/resistance.
+- **A structure-derived trade plan** (`niftyscout/levels.py`): entry, a stop
+  sized off ATR (or the nearest opposing swing point if ATR hasn't warmed
+  up), a measured-move target1, and a stretch target2 off the volume
+  profile/next swing point, with the resulting risk:reward shown. Every
+  number is a transparent function of the pattern's own geometry and
+  volatility — see `basis` on each plan for exactly which inputs produced
+  it. **This is still not trading advice** — same "decision-support, not a
+  recommendation" posture as the rest of this tool.
+- **A one-paragraph analyst note** (`niftyscout/analyst.py`): the above,
+  turned into plain English. It's pure string formatting over the numbers
+  above — deterministic, no model call, same inputs always produce the same
+  sentence.
+
+Tunable in `config.yaml` under `indicators:`, `volume_profile:`, and
+`levels:`.
+
 ## Quick start
 
 ```bash
@@ -62,6 +89,17 @@ feed (Kite Connect, Angel One SmartAPI, Dhan, Upstox, Fyers all have one) by
 writing a small class that implements `DataProvider.get_bars(...)` in
 `niftyscout/data.py` — nothing else in the codebase needs to change.
 
+One data-quality nuance that matters for the volume-based confirmation
+described below: Yahoo returns genuine, meaningful `Volume` on **daily**
+index bars, but **intraday** index bars (`^NSEI`/`^NSEBANK`/`^BSESN` at
+`5m`/`15m`) consistently come back as `Volume=0` — indices aren't traded
+directly, so there's no real intraday tick volume to report. The relative-
+volume scoring in `indicators.py` treats missing/zero volume as neutral
+(never a penalty), so intraday signals just don't get a volume-confirmation
+boost — they're not scored *down* for it. If you swap in a broker feed that
+does report real intraday volume (or point `CSVProvider` at futures/options
+volume as a proxy), that confirmation becomes meaningful.
+
 There's also a `CSVProvider` for testing against your own exported history:
 ```bash
 python -m niftyscout --csv NIFTY=my_nifty_15m.csv,BANKNIFTY=my_bn_15m.csv scan
@@ -89,13 +127,18 @@ I'll decide" and you stay clear of that.
 
 ## About `replay` — read this before trusting a hit rate
 
-`replay` is a sanity check, not a backtest. It has no transaction costs, no
-slippage, no realistic stop-loss/target logic — it just asks "N bars after
-this signal, was price higher (for a bullish signal) or lower (for a
-bearish one)?" Use it to get a rough feel for whether a pattern setup is
-worth watching on a given index/timeframe, not as proof a strategy works.
-Markets change; a good hit rate on 2024-2025 data is not a promise for
-tomorrow.
+`replay` is a sanity check, not a backtest. Its hit-rate/return numbers come
+from a fixed-horizon rule ("N bars after this signal, was price higher for a
+bullish signal or lower for a bearish one?"), with no transaction costs or
+slippage. Its per-signal entry/stop/target (`--verbose`) *is* real structure-
+derived math from `levels.py` — but because `replay` (unlike live scanning)
+evaluates every historical bar without filtering to only the most recent
+ones, the same pattern can re-fire on many consecutive stale bars after
+price has already moved well past its level; a stop/target computed off a
+long-stale level can look implausibly wide. Use `replay` to get a rough feel
+for whether a pattern setup is worth watching on a given index/timeframe,
+not as proof a strategy works. Markets change; a good hit rate on 2024-2025
+data is not a promise for tomorrow.
 
 ## Project layout
 

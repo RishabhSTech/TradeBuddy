@@ -7,8 +7,16 @@ for breakouts found in that data. Detectors look at the WHOLE frame passed
 to them (useful for replay/backtest); the scanner calls them repeatedly on a
 rolling window and only cares about signals on the most recent bar(s).
 
+Each detector also folds relative volume and trend context (see
+`indicators.py`) into its confidence score, and computes `pattern_height` --
+the geometric height of whatever it just detected, which `levels.py` uses to
+project a measured-move target. `detect_all()` is the orchestration point
+that computes indicators/volume-profile once per call and (by default)
+attaches a full TradePlan + analyst note to every fresh signal.
+
 Nothing here places or sizes a trade. A Signal just means: this pattern
-broke out here, at this price, at this confidence. What you do with it is
+broke out here, at this price, at this confidence, and (if enriched) here's
+what its own structure implies for entry/stop/target. What you do with it is
 on you.
 """
 
@@ -19,7 +27,11 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from .analyst import build_analyst_note
+from .indicators import IndicatorSnapshot, compute_indicators, snapshot_at
+from .levels import TradePlan, build_trade_plan
 from .swings import find_swing_highs, find_swing_lows, fit_line
+from .volume_profile import VolumeProfile, compute_volume_profile
 
 
 @dataclass
@@ -33,6 +45,12 @@ class Signal:
     note: str
     index_key: str = ""
     interval: str = ""
+    pattern_height: float | None = None
+    confidence_breakdown: dict[str, float] | None = None
+    indicators: IndicatorSnapshot | None = None
+    volume_levels: dict[str, float] | None = None   # {"poc", "vah", "val"}
+    plan: TradePlan | None = None
+    analyst_note: str | None = None
 
     def headline(self) -> str:
         arrow = "↑" if self.direction == "bullish" else "↓"
@@ -40,6 +58,61 @@ class Signal:
             f"{arrow} {self.index_key} {self.pattern} ({self.direction}) @ "
             f"{self.breakout_price:.2f} — {self.note}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Shared confidence scoring: every detector below folds its own geometric
+# heuristic together with relative volume and trend alignment the same way,
+# so "confidence" means the same thing across all 5 patterns.
+# ---------------------------------------------------------------------------
+
+def _row_val(row: pd.Series, col: str) -> float | None:
+    v = row.get(col)
+    if v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if np.isnan(f) else f
+
+
+def _volume_score(rel_volume: float | None) -> float:
+    """0-1, centered at 0.5 for "average" volume (rel_volume == 1.0);
+    unknown volume is scored neutral rather than penalized."""
+    if rel_volume is None:
+        return 0.5
+    return float(min(1.0, max(0.0, rel_volume / 2.0)))
+
+
+def _trend_score(trend_direction: str | None, trend_strength: float | None, bullish: bool) -> float:
+    """0-1, centered at 0.5 (no higher-timeframe trend context, or a flat
+    EMA stack). Moves toward 1 when the breakout direction agrees with the
+    EMA-stack trend, toward 0 when it fights it."""
+    if not trend_direction or trend_direction == "flat":
+        return 0.5
+    strength = trend_strength or 0.0
+    aligned = (trend_direction == "up" and bullish) or (trend_direction == "down" and not bullish)
+    return 0.5 + 0.5 * strength if aligned else 0.5 - 0.5 * strength
+
+
+def _composite_confidence(geometry: float, volume_score: float, trend_score: float) -> tuple[float, dict[str, float]]:
+    composite = geometry * 0.5 + volume_score * 0.25 + trend_score * 0.25
+    composite = min(1.0, max(0.0, composite))
+    breakdown = {
+        "geometry": round(float(geometry), 3),
+        "volume": round(volume_score, 3),
+        "trend": round(trend_score, 3),
+    }
+    return round(composite, 3), breakdown
+
+
+def _score_at(ind: pd.DataFrame, pos: int, geometry: float, bullish: bool) -> tuple[float, dict[str, float]]:
+    pos = min(max(pos, 0), len(ind) - 1)
+    row = ind.iloc[pos]
+    vol_score = _volume_score(_row_val(row, "rel_volume"))
+    trend_score = _trend_score(row.get("trend_direction"), _row_val(row, "trend_strength"), bullish)
+    return _composite_confidence(geometry, vol_score, trend_score)
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +124,7 @@ def detect_range_breakout(
     lookback: int = 20,
     max_range_pct: float = 0.012,
     confirm_pct: float = 0.0008,
+    ind: pd.DataFrame | None = None,
 ) -> list[Signal]:
     """Flags a breakout out of a tight consolidation range.
 
@@ -63,6 +137,8 @@ def detect_range_breakout(
     n = len(df)
     if n < lookback + 1:
         return out
+    if ind is None:
+        ind = compute_indicators(df)
 
     highs = df["High"].to_numpy()
     lows = df["Low"].to_numpy()
@@ -79,10 +155,12 @@ def detect_range_breakout(
         range_pct = (range_high - range_low) / avg_close
         if range_pct > max_range_pct:
             continue
+        pattern_height = float(range_high - range_low)
 
         close = closes[i]
         if close > range_high * (1 + confirm_pct):
-            confidence = min(1.0, 0.5 + (max_range_pct - range_pct) * 20)
+            geometry = min(1.0, 0.5 + (max_range_pct - range_pct) * 20)
+            confidence, breakdown = _score_at(ind, i, geometry, bullish=True)
             out.append(
                 Signal(
                     pattern="Range breakout",
@@ -90,7 +168,9 @@ def detect_range_breakout(
                     timestamp=df.index[i],
                     breakout_price=float(close),
                     level=float(range_high),
-                    confidence=round(confidence, 2),
+                    confidence=confidence,
+                    confidence_breakdown=breakdown,
+                    pattern_height=pattern_height,
                     note=(
                         f"broke above {lookback}-bar range top "
                         f"{range_high:.2f} (range was {range_pct*100:.2f}% wide)"
@@ -98,7 +178,8 @@ def detect_range_breakout(
                 )
             )
         elif close < range_low * (1 - confirm_pct):
-            confidence = min(1.0, 0.5 + (max_range_pct - range_pct) * 20)
+            geometry = min(1.0, 0.5 + (max_range_pct - range_pct) * 20)
+            confidence, breakdown = _score_at(ind, i, geometry, bullish=False)
             out.append(
                 Signal(
                     pattern="Range breakdown",
@@ -106,7 +187,9 @@ def detect_range_breakout(
                     timestamp=df.index[i],
                     breakout_price=float(close),
                     level=float(range_low),
-                    confidence=round(confidence, 2),
+                    confidence=confidence,
+                    confidence_breakdown=breakdown,
+                    pattern_height=pattern_height,
                     note=(
                         f"broke below {lookback}-bar range bottom "
                         f"{range_low:.2f} (range was {range_pct*100:.2f}% wide)"
@@ -126,6 +209,7 @@ def detect_triangle_breakout(
     swing_order: int = 3,
     flat_slope_pct: float = 0.0006,
     confirm_pct: float = 0.0008,
+    ind: pd.DataFrame | None = None,
 ) -> list[Signal]:
     """Fits trendlines through recent swing highs and swing lows; if they
     are converging (or one is flat), checks whether the latest close breaks
@@ -134,6 +218,8 @@ def detect_triangle_breakout(
     n = len(df)
     if n < lookback + swing_order + 1:
         return out
+    if ind is None:
+        ind = compute_indicators(df)
 
     for i in range(lookback, n):
         window = df.iloc[i - lookback : i]
@@ -172,9 +258,11 @@ def detect_triangle_breakout(
         proj_lo = slope_lo * cur_pos + intercept_lo
         if proj_hi <= proj_lo:
             continue  # lines have already crossed, no triangle left
+        pattern_height = float(proj_hi - proj_lo)
 
         close = float(df["Close"].iloc[i])
         if close > proj_hi * (1 + confirm_pct):
+            confidence, breakdown = _score_at(ind, i, 0.6, bullish=True)
             out.append(
                 Signal(
                     pattern=shape,
@@ -182,11 +270,14 @@ def detect_triangle_breakout(
                     timestamp=df.index[i],
                     breakout_price=close,
                     level=float(proj_hi),
-                    confidence=0.6,
+                    confidence=confidence,
+                    confidence_breakdown=breakdown,
+                    pattern_height=pattern_height,
                     note=f"closed above upper trendline at {proj_hi:.2f}",
                 )
             )
         elif close < proj_lo * (1 - confirm_pct):
+            confidence, breakdown = _score_at(ind, i, 0.6, bullish=False)
             out.append(
                 Signal(
                     pattern=shape,
@@ -194,7 +285,9 @@ def detect_triangle_breakout(
                     timestamp=df.index[i],
                     breakout_price=close,
                     level=float(proj_lo),
-                    confidence=0.6,
+                    confidence=confidence,
+                    confidence_breakdown=breakdown,
+                    pattern_height=pattern_height,
                     note=f"closed below lower trendline at {proj_lo:.2f}",
                 )
             )
@@ -211,15 +304,17 @@ def detect_double_top_bottom(
     swing_order: int = 3,
     similarity_pct: float = 0.006,
     confirm_pct: float = 0.0008,
+    ind: pd.DataFrame | None = None,
 ) -> list[Signal]:
     out: list[Signal] = []
     n = len(df)
     if n < lookback + swing_order + 1:
         return out
+    if ind is None:
+        ind = compute_indicators(df)
 
     for i in range(lookback, n):
         window = df.iloc[i - lookback : i]
-        base_pos = i - lookback
         close = float(df["Close"].iloc[i])
         avg_price = float(window["Close"].mean())
         if avg_price <= 0:
@@ -233,6 +328,8 @@ def detect_double_top_bottom(
                 if len(trough_slice) >= 3:
                     neckline = float(trough_slice["Low"].min())
                     if close < neckline * (1 - confirm_pct):
+                        pattern_height = float((h1.price + h2.price) / 2 - neckline)
+                        confidence, breakdown = _score_at(ind, i, 0.65, bullish=False)
                         out.append(
                             Signal(
                                 pattern="Double top",
@@ -240,7 +337,9 @@ def detect_double_top_bottom(
                                 timestamp=df.index[i],
                                 breakout_price=close,
                                 level=neckline,
-                                confidence=0.65,
+                                confidence=confidence,
+                                confidence_breakdown=breakdown,
+                                pattern_height=pattern_height,
                                 note=(
                                     f"two peaks near {h1.price:.2f}/{h2.price:.2f}, "
                                     f"broke neckline {neckline:.2f}"
@@ -256,6 +355,8 @@ def detect_double_top_bottom(
                 if len(peak_slice) >= 3:
                     neckline = float(peak_slice["High"].max())
                     if close > neckline * (1 + confirm_pct):
+                        pattern_height = float(neckline - (l1.price + l2.price) / 2)
+                        confidence, breakdown = _score_at(ind, i, 0.65, bullish=True)
                         out.append(
                             Signal(
                                 pattern="Double bottom",
@@ -263,14 +364,15 @@ def detect_double_top_bottom(
                                 timestamp=df.index[i],
                                 breakout_price=close,
                                 level=neckline,
-                                confidence=0.65,
+                                confidence=confidence,
+                                confidence_breakdown=breakdown,
+                                pattern_height=pattern_height,
                                 note=(
                                     f"two troughs near {l1.price:.2f}/{l2.price:.2f}, "
                                     f"broke neckline {neckline:.2f}"
                                 ),
                             )
                         )
-        del base_pos
     return out
 
 
@@ -284,11 +386,14 @@ def detect_head_and_shoulders(
     swing_order: int = 3,
     shoulder_similarity_pct: float = 0.012,
     confirm_pct: float = 0.0008,
+    ind: pd.DataFrame | None = None,
 ) -> list[Signal]:
     out: list[Signal] = []
     n = len(df)
     if n < lookback + swing_order + 1:
         return out
+    if ind is None:
+        ind = compute_indicators(df)
 
     for i in range(lookback, n):
         window = df.iloc[i - lookback : i]
@@ -310,6 +415,8 @@ def detect_head_and_shoulders(
                 if len(troughs) >= 2:
                     neckline = (troughs[0].price + troughs[-1].price) / 2
                     if close < neckline * (1 - confirm_pct):
+                        pattern_height = float(head.price - neckline)
+                        confidence, breakdown = _score_at(ind, i, 0.7, bullish=False)
                         out.append(
                             Signal(
                                 pattern="Head and shoulders",
@@ -317,7 +424,9 @@ def detect_head_and_shoulders(
                                 timestamp=df.index[i],
                                 breakout_price=close,
                                 level=float(neckline),
-                                confidence=0.7,
+                                confidence=confidence,
+                                confidence_breakdown=breakdown,
+                                pattern_height=pattern_height,
                                 note=f"head {head.price:.2f}, broke neckline {neckline:.2f}",
                             )
                         )
@@ -332,6 +441,8 @@ def detect_head_and_shoulders(
                 if len(peaks) >= 2:
                     neckline = (peaks[0].price + peaks[-1].price) / 2
                     if close > neckline * (1 + confirm_pct):
+                        pattern_height = float(neckline - head.price)
+                        confidence, breakdown = _score_at(ind, i, 0.7, bullish=True)
                         out.append(
                             Signal(
                                 pattern="Inverse head and shoulders",
@@ -339,7 +450,9 @@ def detect_head_and_shoulders(
                                 timestamp=df.index[i],
                                 breakout_price=close,
                                 level=float(neckline),
-                                confidence=0.7,
+                                confidence=confidence,
+                                confidence_breakdown=breakdown,
+                                pattern_height=pattern_height,
                                 note=f"head {head.price:.2f}, broke neckline {neckline:.2f}",
                             )
                         )
@@ -354,6 +467,7 @@ def detect_opening_range_breakout(
     df: pd.DataFrame,
     orb_minutes: int = 15,
     confirm_pct: float = 0.0005,
+    ind: pd.DataFrame | None = None,
 ) -> list[Signal]:
     """Classic intraday index play: mark the high/low of the first
     `orb_minutes` after the 9:15 open, then flag the first close afterwards
@@ -363,6 +477,8 @@ def detect_opening_range_breakout(
     out: list[Signal] = []
     if df.empty:
         return out
+    if ind is None:
+        ind = compute_indicators(df)
 
     df = df.copy()
     df["date"] = df.index.date
@@ -379,13 +495,18 @@ def detect_opening_range_breakout(
 
         or_high = float(or_window["High"].max())
         or_low = float(or_window["Low"].min())
+        pattern_height = float(or_high - or_low)
         triggered = False
 
         for ts, row in rest.iterrows():
             if triggered:
                 break
             close = float(row["Close"])
+            pos = df.index.get_loc(ts)
+            if isinstance(pos, slice):
+                pos = pos.stop - 1
             if close > or_high * (1 + confirm_pct):
+                confidence, breakdown = _score_at(ind, pos, 0.55, bullish=True)
                 out.append(
                     Signal(
                         pattern="Opening range breakout",
@@ -393,12 +514,15 @@ def detect_opening_range_breakout(
                         timestamp=ts,
                         breakout_price=close,
                         level=or_high,
-                        confidence=0.55,
+                        confidence=confidence,
+                        confidence_breakdown=breakdown,
+                        pattern_height=pattern_height,
                         note=f"broke above first {orb_minutes}-min high {or_high:.2f}",
                     )
                 )
                 triggered = True
             elif close < or_low * (1 - confirm_pct):
+                confidence, breakdown = _score_at(ind, pos, 0.55, bullish=False)
                 out.append(
                     Signal(
                         pattern="Opening range breakdown",
@@ -406,7 +530,9 @@ def detect_opening_range_breakout(
                         timestamp=ts,
                         breakout_price=close,
                         level=or_low,
-                        confidence=0.55,
+                        confidence=confidence,
+                        confidence_breakdown=breakdown,
+                        pattern_height=pattern_height,
                         note=f"broke below first {orb_minutes}-min low {or_low:.2f}",
                     )
                 )
@@ -423,24 +549,73 @@ DETECTORS = {
 }
 
 
+def _enrich_signal(
+    sig: Signal,
+    df: pd.DataFrame,
+    ind: pd.DataFrame,
+    volume_profile: VolumeProfile | None,
+    level_params: dict,
+) -> None:
+    if sig.timestamp not in df.index:
+        return  # defensive: shouldn't happen, every detector stamps a real df timestamp
+    pos = df.index.get_loc(sig.timestamp)
+    if isinstance(pos, slice):
+        pos = pos.stop - 1
+    snapshot = snapshot_at(ind, pos)
+    sig.indicators = snapshot
+    if volume_profile is not None:
+        sig.volume_levels = {
+            "poc": volume_profile.poc,
+            "vah": volume_profile.vah,
+            "val": volume_profile.val,
+        }
+    sig.plan = build_trade_plan(sig, df, snapshot, volume_profile, **level_params)
+    sig.analyst_note = build_analyst_note(sig, snapshot, sig.plan)
+
+
 def detect_all(
     df: pd.DataFrame,
     index_key: str,
     interval: str,
     enabled: list[str] | None = None,
     params: dict[str, dict] | None = None,
+    indicator_params: dict | None = None,
+    level_params: dict | None = None,
+    volume_profile_params: dict | None = None,
+    enrich: bool = True,
 ) -> list[Signal]:
-    """Run the requested detectors (default: all) over `df` and stamp each
-    resulting Signal with the index key and interval it came from."""
+    """Run the requested detectors (default: all) over `df`, stamp each
+    resulting Signal with the index key/interval it came from, and (unless
+    `enrich=False`) attach a full indicator snapshot + trade plan + analyst
+    note computed from the SAME indicator/volume-profile pass shared by every
+    detector."""
     enabled = enabled or list(DETECTORS.keys())
     params = params or {}
+    indicator_params = indicator_params or {}
+    level_params = level_params or {}
+    volume_profile_params = dict(volume_profile_params or {})
+
+    ind = compute_indicators(df, interval=interval, **indicator_params)
+
     signals: list[Signal] = []
     for name in enabled:
         fn = DETECTORS[name]
         kwargs = params.get(name, {})
-        for sig in fn(df, **kwargs):
+        for sig in fn(df, ind=ind, **kwargs):
             sig.index_key = index_key
             sig.interval = interval
             signals.append(sig)
     signals.sort(key=lambda s: s.timestamp)
+
+    if enrich and signals:
+        lookback_bars = volume_profile_params.pop("lookback_bars", 120)
+        vp_window = df.tail(min(len(df), lookback_bars))
+        volume_profile: VolumeProfile | None
+        try:
+            volume_profile = compute_volume_profile(vp_window, **volume_profile_params)
+        except ValueError:
+            volume_profile = None
+        for sig in signals:
+            _enrich_signal(sig, df, ind, volume_profile, level_params)
+
     return signals

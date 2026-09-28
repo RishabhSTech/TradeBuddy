@@ -20,6 +20,9 @@ backend/data/
 # OS
 .DS_Store
 
+# Claude Code session state
+.claude/
+
 # Node / Next.js (frontend/)
 frontend/node_modules/
 frontend/.next/
