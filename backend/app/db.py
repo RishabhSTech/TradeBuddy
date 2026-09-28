@@ -28,10 +28,17 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 DEFAULT_SQLITE_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "niftyscout.db")
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{os.path.abspath(DEFAULT_SQLITE_PATH)}")
 
-# Railway (and Heroku-style) Postgres URLs sometimes use the legacy
-# "postgres://" scheme, which SQLAlchemy's psycopg2 dialect rejects.
+# Railway/Supabase/Heroku-style URLs use the legacy "postgres://" scheme,
+# which SQLAlchemy's psycopg2 dialect rejects; normalize to "postgresql://".
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# Pin the driver explicitly: SQLAlchemy 2.0 prefers the psycopg (v3) dialect
+# for a bare "postgresql://" URL when it's importable, but we only ship
+# psycopg2-binary. Without this, a bare URL crashes with
+# "ModuleNotFoundError: No module named 'psycopg'" even though psycopg2 is installed.
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 if DATABASE_URL.startswith("sqlite"):
     os.makedirs(os.path.dirname(os.path.abspath(DEFAULT_SQLITE_PATH)), exist_ok=True)
