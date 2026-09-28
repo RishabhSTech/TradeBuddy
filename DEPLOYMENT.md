@@ -33,7 +33,9 @@ git push -u origin main
 
 1. On [railway.app](https://railway.app), **New Project -> Deploy from GitHub repo** -> pick this repo.
 2. Railway will detect `Dockerfile` and `railway.json` at the repo root and build from there automatically. **Do not set a Root Directory** for this service — the Dockerfile needs both `niftyscout/` and `backend/` from the repo root to build.
-3. **Add a Postgres database**: in the same project, **New -> Database -> Add PostgreSQL**. Railway automatically injects `DATABASE_URL` into every service in the project, including this one — nothing else to configure. (Without this, the backend falls back to a local SQLite file that's wiped on every redeploy.)
+3. **Add a database**: either **New -> Database -> Add PostgreSQL** in the same Railway project (auto-injects `DATABASE_URL`, nothing else to configure), or point `DATABASE_URL` at an external Postgres like Supabase (see gotcha below). Without either, the backend falls back to a local SQLite file that's wiped on every redeploy.
+
+   **Gotcha if using Supabase**: Supabase's *direct* connection host (`db.<ref>.supabase.co:5432`) resolves **IPv6-only**, and most platforms (including Railway, by default) don't have IPv6 egress — you'll see `Network is unreachable` in the logs. Use Supabase's **connection pooler** instead (Project Settings -> Database -> Connection Pooling -> Session mode), which resolves over IPv4: `postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`. Also percent-encode any special characters in the password (`@` -> `%40`, etc).
 4. Set these **Variables** on the backend service:
    | Variable | Value |
    |---|---|
@@ -55,6 +57,8 @@ The backend starts scanning on its own as soon as it boots (a background thread,
    | `NEXT_PUBLIC_API_BASE_URL` | your Railway backend URL from step 1, e.g. `https://tradebuddy-backend.up.railway.app` (no trailing slash) |
 4. Deploy. Vercel gives you a `https://<project>.vercel.app` URL.
 5. Go back to Railway and set `FRONTEND_ORIGIN` (step 1.4) to this exact URL if you hadn't yet, then redeploy the backend so CORS allows it.
+
+**Gotcha if the GitHub repo and Vercel account are under different identities** (e.g. a personal GitHub org vs. a different Vercel account/login): the dashboard import flow in step 1 handles the cross-account GitHub authorization via a popup automatically. If you instead create the Vercel project first and try to connect the repo after the fact, you may need to explicitly authorize Vercel's GitHub App for that account/repo under **Project -> Settings -> Git -> Connect Repository** before it'll link — a CLI-only `vercel git connect` fails silently in this case with "Make sure there aren't any typos and that you have access to the repository."
 
 ## 3. Confirm the automation loop
 
