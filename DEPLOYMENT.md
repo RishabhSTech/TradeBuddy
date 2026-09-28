@@ -60,6 +60,8 @@ The backend starts scanning on its own as soon as it boots (a background thread,
 
 **Gotcha if the GitHub repo and Vercel account are under different identities** (e.g. a personal GitHub org vs. a different Vercel account/login): the dashboard import flow in step 1 handles the cross-account GitHub authorization via a popup automatically. If you instead create the Vercel project first and try to connect the repo after the fact via CLI, `vercel git connect` fails with "Make sure there aren't any typos and that you have access to the repository" until you authorize Vercel's GitHub App for that account/repo once under **Project -> Settings -> Git -> Connect Repository** in the dashboard — after that one-time authorization, `vercel git connect` (or the dashboard button) links it immediately.
 
+**Gotcha if you create the Vercel project via CLI (`vercel project add`) instead of the dashboard import wizard**: the dashboard import flow prompts for **Root Directory** as part of setup; creating a project via CLI does not, so it silently defaults to the repo root. Every git-triggered build then "succeeds" in a few dozen milliseconds — because there's no `package.json` at the repo root, so there's nothing to build — and the site 404s with `x-vercel-error: NOT_FOUND` even though the deployment shows "Ready". A `vercel deploy --prod` run locally from inside `frontend/` masks this, since the CLI scopes the build to the current directory regardless of the project's stored setting. Fix: set **Project -> Settings -> General -> Root Directory** to `frontend` in the dashboard (or `PATCH https://api.vercel.com/v9/projects/<id>` with `{"rootDirectory": "frontend"}`), then redeploy.
+
 ## 3. Confirm the automation loop
 
 From here on:
