@@ -1,0 +1,64 @@
+# NiftyScout configuration
+#
+# indices: which of NIFTY / BANKNIFTY / SENSEX to watch (see niftyscout/symbols.py)
+# intervals: bar sizes to scan on. Shorter = faster alerts, noisier patterns.
+# lookback: how much history to pull per interval (yfinance period strings)
+# detectors: which pattern detectors to run, and their tunables
+# poll_seconds: how often `niftyscout watch` re-checks the market
+# only_market_hours: skip scans outside 9:15-15:30 IST on weekdays
+
+indices:
+  - NIFTY
+  - BANKNIFTY
+  - SENSEX
+
+intervals:
+  - "15m"
+  - "1d"
+
+lookback:
+  "5m": "5d"
+  "15m": "1mo"
+  "1h": "3mo"
+  "1d": "1y"
+
+poll_seconds: 300
+only_market_hours: true
+
+detectors:
+  enabled:
+    - range
+    - triangle
+    - double
+    - head_shoulders
+    - orb
+  params:
+    range:
+      lookback: 20
+      max_range_pct: 0.012
+      confirm_pct: 0.0008
+    triangle:
+      lookback: 40
+      swing_order: 3
+      flat_slope_pct: 0.0006
+      confirm_pct: 0.0008
+    double:
+      lookback: 60
+      swing_order: 3
+      similarity_pct: 0.006
+      confirm_pct: 0.0008
+    head_shoulders:
+      lookback: 80
+      swing_order: 3
+      shoulder_similarity_pct: 0.012
+      confirm_pct: 0.0008
+    orb:
+      orb_minutes: 15
+      confirm_pct: 0.0005
+
+alerts:
+  send_chart: true
+  charts_dir: "charts"
+  seen_store: "data_cache/seen_signals.json"
+  # Telegram: set these as environment variables instead of here.
+  #   NIFTYSCOUT_TG_TOKEN, NIFTYSCOUT_TG_CHAT_ID

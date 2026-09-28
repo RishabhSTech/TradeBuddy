@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.venv*/
+*.egg-info/
+.pytest_cache/
+
+# NiftyScout runtime artifacts (CLI mode)
+charts/*.png
+data_cache/*.json
+
+# Backend runtime artifacts (API mode)
+backend/data/
+
+# Env files
+.env
+.env.local
+*.env
+
+# OS
+.DS_Store
+
+# Node / Next.js (frontend/)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
