@@ -1,5 +1,5 @@
 """
-NiftyScout API — a thin FastAPI service around the niftyscout package.
+TradeBuddy API — a thin FastAPI service around the niftyscout package.
 
 Endpoints:
     GET  /api/health           liveness check
@@ -44,7 +44,7 @@ from .schemas import (
     StatusOut,
 )
 
-app = FastAPI(title="NiftyScout API", version="1.0.0")
+app = FastAPI(title="TradeBuddy API", version="1.0.0")
 
 _origins = os.environ.get("FRONTEND_ORIGIN", "*")
 app.add_middleware(

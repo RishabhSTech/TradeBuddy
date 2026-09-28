@@ -42,7 +42,7 @@ export default function Home() {
       setLoadError(
         err instanceof ApiError
           ? err.message
-          : `Could not reach the NiftyScout API at ${api.base}. Is the backend running?`
+          : `Could not reach the TradeBuddy API at ${api.base}. Is the backend running?`
       );
     }
   }, []);
@@ -105,7 +105,7 @@ export default function Home() {
       <header className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <Binoculars size={22} weight="bold" className="text-accent" />
-          <h1 className="text-lg font-semibold text-foreground">NiftyScout</h1>
+          <h1 className="text-lg font-semibold text-foreground">TradeBuddy</h1>
         </div>
         <p className="text-sm text-muted">
           Alert-only pattern watcher for Nifty 50, Bank Nifty and Sensex. It never places an
@@ -150,7 +150,7 @@ export default function Home() {
 
           {filteredSignals.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted">
-              No signals yet. NiftyScout scans automatically during market hours, or hit
+              No signals yet. TradeBuddy scans automatically during market hours, or hit
               &ldquo;Scan now&rdquo; above to check right now.
             </div>
           ) : (
@@ -168,7 +168,7 @@ export default function Home() {
       {tab === "replay" && config && <ReplayPanel config={config} />}
 
       <footer className="mt-auto border-t border-border pt-4 text-xs text-muted">
-        Decision-support only, not investment advice. NiftyScout never places, modifies or
+        Decision-support only, not investment advice. TradeBuddy never places, modifies or
         cancels an order.
       </footer>
     </div>

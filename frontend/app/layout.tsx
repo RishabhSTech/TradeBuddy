@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NiftyScout",
+  title: "TradeBuddy",
   description: "Alert-only pattern-breakout watcher for Nifty 50, Bank Nifty and Sensex.",
 };
 

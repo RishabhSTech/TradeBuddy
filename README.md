@@ -1,4 +1,4 @@
-# NiftyScout
+# TradeBuddy
 
 An alert-only pattern-breakout watcher for **Nifty 50, Bank Nifty and Sensex**.
 It never places an order. It watches price, recognizes chart-pattern

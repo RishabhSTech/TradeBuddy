@@ -1,6 +1,6 @@
-# NiftyScout dashboard
+# TradeBuddy dashboard
 
-Next.js dashboard for [NiftyScout](../README.md): a live signal feed, config
+Next.js dashboard for [TradeBuddy](../README.md): a live signal feed, config
 editor, and a lightweight replay/backtest panel, talking to the FastAPI
 backend in [`../backend`](../backend).
 

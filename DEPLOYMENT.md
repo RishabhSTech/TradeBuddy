@@ -1,4 +1,4 @@
-# Deploying NiftyScout: backend on Railway, dashboard on Vercel
+# Deploying TradeBuddy: backend on Railway, dashboard on Vercel
 
 This repo has three parts:
 
@@ -23,11 +23,10 @@ cd nifty-breakout-scout
 git add -A
 git commit -m "Add API backend, dashboard, and deploy config"
 
-# create the repo (adjust visibility/name as you like) and push
-gh repo create niftyscout --private --source=. --remote=origin --push
-# or, without gh: create an empty repo on github.com, then
-#   git remote add origin git@github.com:<you>/niftyscout.git
-#   git push -u origin main
+# create an empty repo named TradeBuddy on github.com, then:
+git remote add origin git@github.com:<you>/TradeBuddy.git
+git push -u origin main
+# (or, with the gh CLI installed and authenticated: gh repo create TradeBuddy --private --source=. --remote=origin --push)
 ```
 
 ## 1. Backend -> Railway
@@ -38,10 +37,10 @@ gh repo create niftyscout --private --source=. --remote=origin --push
 4. Set these **Variables** on the backend service:
    | Variable | Value |
    |---|---|
-   | `FRONTEND_ORIGIN` | your Vercel URL, e.g. `https://niftyscout.vercel.app` (comma-separate if you have more than one, e.g. also a preview URL) |
+   | `FRONTEND_ORIGIN` | your Vercel URL, e.g. `https://tradebuddy.vercel.app` (comma-separate if you have more than one, e.g. also a preview URL) |
    | `NIFTYSCOUT_TG_TOKEN` | *(optional)* Telegram bot token, if you want Telegram alerts too |
    | `NIFTYSCOUT_TG_CHAT_ID` | *(optional)* Telegram chat id |
-5. Deploy. Railway gives the service a public URL under **Settings -> Networking -> Generate Domain** (something like `niftyscout-backend.up.railway.app`). Copy it — the frontend needs it.
+5. Deploy. Railway gives the service a public URL under **Settings -> Networking -> Generate Domain** (something like `tradebuddy-backend.up.railway.app`). Copy it — the frontend needs it.
 6. Sanity check: `curl https://<your-backend>.up.railway.app/api/health` should return `{"ok":true}`.
 
 The backend starts scanning on its own as soon as it boots (a background thread, same scan-once logic as the CLI's `watch` loop, gated by `only_market_hours` and `poll_seconds` from `config.yaml` / whatever you've since changed from the dashboard).
@@ -53,7 +52,7 @@ The backend starts scanning on its own as soon as it boots (a background thread,
 3. Add an environment variable:
    | Variable | Value |
    |---|---|
-   | `NEXT_PUBLIC_API_BASE_URL` | your Railway backend URL from step 1, e.g. `https://niftyscout-backend.up.railway.app` (no trailing slash) |
+   | `NEXT_PUBLIC_API_BASE_URL` | your Railway backend URL from step 1, e.g. `https://tradebuddy-backend.up.railway.app` (no trailing slash) |
 4. Deploy. Vercel gives you a `https://<project>.vercel.app` URL.
 5. Go back to Railway and set `FRONTEND_ORIGIN` (step 1.4) to this exact URL if you hadn't yet, then redeploy the backend so CORS allows it.
 

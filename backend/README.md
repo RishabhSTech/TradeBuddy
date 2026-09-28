@@ -1,4 +1,4 @@
-# NiftyScout API
+# TradeBuddy API
 
 FastAPI service that wraps the `niftyscout` package (one directory up) with:
 
